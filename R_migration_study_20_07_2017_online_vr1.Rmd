@@ -1,0 +1,1157 @@
+---
+title: "Data analysis and figures for paper on  *migration and deforestation*, RMR,RK,JPGJ"
+date: "12 April 2017"
+latest revision: "28 July 2017"
+output:
+  html_document: default
+authors: Ruth Kelly (kellyr44@tcd.ie), with some code for PCA analysis from Mahesh Poudyal 2017 
+---
+
+This is document contains the R code for analysis and PCA and distance figures for P4ges work on migration and deforestation.  
+
+R Figures for GLMM model outputs are in a separate R file entitled: 
+ "R_migration_effects_plots_coding_27_07_2017.Rmd"
+
+R figures for Land access from Supplementary material are in a separate Rmd file entitled:
+"land_access_plots_27_07_2017.R" 
+
+
+```{r setup, include=FALSE, echo=FALSE}
+library("psych")
+library("polycor")
+library("dplyr")
+library("vegan")
+library("ggplot2")
+library("grid")
+library("gridExtra")
+library("reshape2")
+library("MuMIn")
+library("glmmADMB")
+## Function to draw convex hull around scatter plot (for SI Figure S1-b): from
+## https://chitchatr.wordpress.com/2011/12/30/convex-hull-around-scatter-plot-in-r/
+
+```
+
+#### How do migrants/non migrants differ? (in terms of economic characteristics). 
+
+
+This PCA analysis is based on previous code by Mahesh Poudyal: see https://github.com/mpoudyal/cepaper
+
+Here I examine the position of migrants and non-migrant using the same factors as used in 
+Poudyal et al. Total 603 households (4 of which are omitted from this dataset for wealth analysis, 3 with no data on house quality, and 1 with no data on food security). Fa.parallel is used to find the best number of axes.
+
+From the plot of loadings on first two PCA axes. Here we can see that the first axis corresponds with all of our wealth metrics (this explains 29% of variance in the dataset).  With households to the left of the plot poorer in all attributes.  The second axis is harder to interpret and goes found those with greater investment in   housing in the lower part of the plot, to those with more livestock units and mp3players at the top (16% of the variance). 
+
+I've used factor.fit in the package 'vegan' to explicitly test for differences between migrants and non-migrants in terms of the hulls and centroids (plotted as black dots on the PCA).This is a permutation based test, after accounting differences between sites. Here this describes 3.7% of the variation and is not significant p = 0.153.
+
+
+
+
+```{r PCA of wealth by migrant/non-migrant status, include=TRUE, echo=FALSE, fig.width = 11, fig.height = 7}
+
+library(dplyr)
+hhwealth <- read.csv("hhwealth.csv")
+
+#summary(hhwealth)
+
+### note 3 rows are lost here as there was no info on house quality. 
+
+hhwealth$lightAvail <- hhwealth$type_light + hhwealth$light_sufficiency
+#names(hhinfo)
+
+pov2 <- hhwealth[,c(1:8, 11:12, 14)]
+
+
+x1 <- which(is.na(pov2$food_sec))
+## one value is dropped here.
+pov2 <- pov2[-x1,]
+
+###
+
+x2 <- which(is.na(pov2$house_qlty))
+
+## 3 values are dropped here. 
+pov2 <- pov2[-x2,]
+
+
+### migration details are from Rina 31-May-2017
+mig1 <- read.csv("hhinfo2_02072017.csv")
+
+mig2 <- dplyr::select(mig1, resp_id, Migrant = Mig_status, hh_age,
+               M_reason = Reason, hh_size, dist2park, dist_migrated = new_dist )
+
+
+
+pov_mig <- droplevels(merge(pov2, mig2, by = "resp_id", all.x = TRUE))
+
+
+## 
+
+
+pca_cols <- dplyr::select(pov_mig, NRooms = main_house_rm, house_qlty, tlu, food_sec,
+                   irrigated_rice, lightAvail, mplayer_num)
+
+
+poverty.pca.set.nice <- c("Number of rooms", 
+                          "House quality", 
+                          "Tropical livestock", 
+                          "Food security", 
+                          "Irrigated rice", 
+                          "Access to light", 
+                          "Music player")
+
+
+poverty.cor <- with(pca_cols, hetcor(NRooms, 
+                                    as.ordered(house_qlty),
+                                    tlu, 
+                                    food_sec, 
+                                    as.ordered(irrigated_rice),
+                                    as.ordered(lightAvail), 
+                                    as.ordered(mplayer_num),
+                                    ML=TRUE))
+#########
+
+#### Describe on best number of axes for pca plot based on random data and scree plot
+###  of real data.  Setting cor = 'mixed' makes this appropriate for a range of 
+#### correlations e.g. polychoric and polyserial  correlations
+
+#fa.parallel(poverty.cor$correlations, n.obs = 597, cor = 'mixed')
+#### suggests that the optimal n  PC axes is 2.  
+
+poverty.pca <- principal(r=poverty.cor$correlations, rotate="none", nfactors = 2)
+
+poverty.pred.data <- pca_cols
+colnames(poverty.pred.data) <- rownames(poverty.pca$loadings)
+
+poverty.pca$scores <- factor.scores(poverty.pred.data, poverty.pca)
+
+rownames(poverty.pca$loadings) <- poverty.pca.set.nice
+
+pov_pca_scores <- cbind(pov_mig,  poverty.pca$scores$scores)
+
+pov_pca_scores$MigrantF <- factor(pov_pca_scores$Migrant,
+                              levels = c(0,1),labels = c("Migrant","Non-migrant"))
+
+find_hull <- function(df) df[chull(df$PC1, df$PC2), ]
+
+hulls <- pov_pca_scores %>% group_by(MigrantF) %>% do(find_hull(.))
+
+poverty.pca.loads <- data.frame(PC1=loadings(poverty.pca)[,1],
+                                 PC2=loadings(poverty.pca)[,2], 
+                                 name=names(loadings(poverty.pca)[,1]))
+
+### I have used factor.fit in the package vegan to look for differences in the PCA centroids ### for Migrants and non-migrants. Here this describes 3.7% of the variation and is not       ### significant p = 0.153
+
+## relevel migrant status for plotting.. 
+pov_pca_scores$MigrantF <- relevel(pov_pca_scores$MigrantF, ref = "Non-migrant")
+
+mat1 <- as.matrix(dplyr::select(pov_pca_scores,PC1, PC2))
+Mig_status <- pov_pca_scores$MigrantF
+
+
+mod1 <- factorfit(mat1, Mig_status, permutations = 999, 
+                  strata = pov_pca_scores$site)
+
+# Centroids:
+#                  PC1     PC2
+# PNon-migrant  0.0882 -0.1786
+# PMigrant     -0.1634  0.3309
+# 
+# Goodness of fit:
+#       r2 Pr(>r)
+# P 0.0368  0.153
+# Blocks:  strata 
+# Permutation: free
+# Number of permutations: 999
+
+centroids <- data.frame(mod1$centroids)
+centroids$Migrant <- row.names(centroids)
+
+#### loadings have been rescaled by 5 so that they can be understood next to hull plot. 
+poverty.pca.loads$PC1Scaled <-poverty.pca.loads$PC1*2
+poverty.pca.loads$PC2Scaled <-poverty.pca.loads$PC2*2
+
+### plot of loadings on first two PCA axes. Here we can see that the first axis corresponds
+### with all of our wealth metrics (and explains 29% of variance).  With households to the   ### left of the plot poorer in all attributes.  
+### The second axis  goes from those with greater investment in  housing in the lower part of the plot, to those with more livestock units and music players ### 
+
+
+pcplot1 <- ggplot(poverty.pca.loads, aes(x=0, y=0, xend=PC1Scaled, yend=PC2Scaled, label=name)) +
+  geom_text(aes(x=PC1Scaled, y=PC2Scaled, hjust="left"), size = 3) +
+  geom_segment(arrow=arrow(length=unit(0.2,"cm"))) + 
+  theme_bw() + 
+   xlab("Wealth axis 1") +
+  ylab("Wealth axis 2") +
+  annotate("text", x=-2.5, y=5.5, label="a)", size=7) +
+ ylim(-4.2,6) + 
+  xlim(-3,6) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey") + 
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey") +
+  theme(panel.grid = element_blank()) + 
+  theme(axis.title = element_text(size = 11))
+
+
+## PCA scatter plot for all sites with convex hulls around scatter plot for each site
+
+pcplot2 <- ggplot(pov_pca_scores, aes(PC1, PC2, shape=MigrantF, colour = MigrantF, fill = MigrantF)) +
+  geom_point(alpha = 0.9) + theme_bw() +
+  geom_polygon(data = hulls, alpha = 0.2) +
+  scale_shape_discrete(name=NULL, guide=guide_legend(reverse = T)) +
+  scale_fill_manual(values = c("#e34a33", "#225ea8"),name=NULL, guide=guide_legend(reverse = T)) +
+    scale_colour_manual(values = c("#e34a33", "#225ea8"),name=NULL, guide=guide_legend(reverse = T)) +
+  xlab("Wealth axis 1") +
+  ylab(NULL) +
+  annotate("text", x=-2.5, y=5.5, label="b)", size=7) +
+ ylim(-4.2,6) + 
+  xlim(-3,6) +  
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey") + 
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey") + 
+  theme(panel.grid = element_blank()) + 
+  geom_point(data = centroids, aes(x = PC1, y = PC2), inherit.aes = FALSE) +
+  geom_segment(data = centroids,aes(x = PC1[1] , y = PC2[1] + 0.1, xend = -0.5, yend = -3.2), inherit.aes = FALSE, colour = "#e34a33") + 
+  annotate("text", x=-0.5, y=-3.5, label="Non-migrant", size=3,colour = "#e34a33") + 
+  geom_segment(data = centroids,aes(x = PC1[2] , y = PC2[2] +0.05, xend = -1, yend = 3.2), inherit.aes = FALSE, colour = "#225ea8") + 
+  annotate("text", x=-1.1, y=3.5, label="Migrant", size=3, colour = "#225ea8") + 
+    theme(legend.position = c(0.7, 0.09), legend.text = element_text(size = 7)) +
+  theme(axis.title = element_text(size = 11))  + 
+  guides(fill = guide_legend(keywidth = 0.5, keyheight = 0.5)) + 
+  guides(colour = guide_legend(keywidth = 0.5, keyheight = 0.5)) + 
+  guides(shape = guide_legend(keywidth = 0.5, keyheight = 0.5)) + 
+  theme(axis.text.y = element_blank())
+
+
+```
+
+#### PCA of wealth with migrants plotted by reason for moving.
+
+This plot is the same as the one above but shows the migrant wealth broken down by the reason for migration. Again, I've used factor.fit in the package 'vegan' to explicitly test this. Here, differences in reasons to move explains 4.7% of the variation and is not significant p = 0.152.
+
+```{r Economic situation of migrants who moved for different reasons, include=TRUE, echo= FALSE, fig.width = 11, fig.height = 7}
+
+### Filter pov_pca_scores to include only migrants
+
+pov_pca_scores2 <- droplevels(filter(pov_pca_scores, Migrant == 0))
+
+#summary(pov_pca_scores2)
+
+### label reason status and make this a factor such that Reason: 2=work,3=marriage,4=land availability,5=followed family members 6=others)  
+
+
+pov_pca_scores2$ReasonF <- factor(pov_pca_scores2$M_reason,
+                              levels = c(4,3,5,2,6),labels = c( "Land", "Marriage", "Family", "Work", "Other"))
+
+
+### remove row with NA for ReasonF
+
+pov_pca_scores2 <- droplevels(pov_pca_scores2[-which(is.na(pov_pca_scores2$ReasonF)),])
+
+
+### calculate convex hulls for  groups
+find_hull <- function(x) x[chull(x$PC1, x$PC2), ]
+
+hulls <- pov_pca_scores2 %>% group_by(ReasonF) %>% do(find_hull(.))
+
+
+#### these remain as previous model for left hand plot.. 
+poverty.pca.loads <- data.frame(PC1=loadings(poverty.pca)[,1],
+                                 PC2=loadings(poverty.pca)[,2], 
+                                 name=names(loadings(poverty.pca)[,1]))
+
+
+
+########### use factor.fit in the package vegan to look for differences
+########### in the centroids 
+
+mat1 <- as.matrix(dplyr::select(pov_pca_scores2,PC1, PC2))
+
+
+##########
+mod1 <- factorfit(mat1, pov_pca_scores2$ReasonF, permutations = 999, 
+                  strata = pov_pca_scores2$site)
+
+# Centroids:
+#               PC1     PC2
+# PMarriage -0.1013 -0.1410
+# PLand     -0.2725  0.4696
+# PFamily    0.0055  0.6429
+# PWork     -0.1710  0.1090
+# POther     0.5141  0.2810
+# 
+# Goodness of fit:
+#       r2 Pr(>r)
+# P 0.0474  0.142
+# Blocks:  strata 
+# Permutation: free
+# Number of permutations: 999
+centroids <- data.frame(mod1$centroids)
+centroids$Reason <- levels(pov_pca_scores2$ReasonF)
+
+#### Colour palette to match map provided by Mahesh..  
+# Land availability: #3ae22e
+# Marriage: #e31a1c
+# Followed family: #a6cee3
+# Work: #1f78b4
+# Other: #22eee8
+
+## PCA scatter plot for all sites with convex hulls around scatter plot for each site (SI Figure S1-b)
+pcplot3 <- ggplot(pov_pca_scores2, aes(PC1, PC2, shape=ReasonF, colour = ReasonF, fill = ReasonF)) +
+  geom_point() + theme_bw() +
+  geom_polygon(data = hulls, alpha = 0.1) +
+  scale_shape_discrete(name=NULL, guide=guide_legend(reverse = F)) +
+  scale_fill_manual(values = c("#3ae22e","#e31a1c",  "#a6cee3", "#1f78b4", "#22eee8"),name=NULL, guide=guide_legend(reverse = F)) +
+    scale_colour_manual(values = c("#3ae22e", "#e31a1c",  "#a6cee3", "#1f78b4", "#22eee8"),name=NULL, guide=guide_legend(reverse = F) )+
+  xlab("Wealth axis 1") +
+  ylab(NULL) +
+  annotate("text", x=-2.5, y=5.5, label="c)", size=7) +
+   ylim(-4.2,6) + 
+  xlim(-3,6) +  
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey") + 
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey") + 
+  theme(panel.grid = element_blank()) + 
+  geom_point(data = centroids, aes(x = PC1, y = PC2), inherit.aes = FALSE) +
+  geom_segment(data = centroids,aes(x = PC1[1], y = PC2[1] + 0.05, xend = - 1, yend = 2.8), inherit.aes = FALSE, colour = "#3ae22e") + 
+  annotate("text", x=-1.1, y = 3.2, label="Land", size=3, colour = "#3ae22e") +
+    geom_segment(data = centroids,aes(x = PC1[2] - 0.05 , y = PC2[2] -0.05, xend = -1.1, yend = -1.6), inherit.aes = FALSE,colour = "#e31a1c") + 
+  annotate("text", x=-1.3, y=-1.9, label="Marriage", size=3,colour = "#e31a1c") + 
+  geom_segment(data = centroids,aes(x = PC1[3] , y = PC2[3] + 0.1, xend = -0.4, yend = 3.8), inherit.aes = FALSE, colour = "#a6cee3") + 
+  annotate("text", x=-0.5, y=4.3, label="Family", size=3,colour = "#a6cee3" ) + 
+  geom_segment(data = centroids,aes(x = PC1[4] -0.05 , y = PC2[4], xend = -1.7, yend = 1.1), inherit.aes = FALSE, colour = "#1f78b4") + 
+  annotate("text", x=-2, y=1.4, label="Work", size=3, colour = "#1f78b4")  +
+  geom_segment(data = centroids,aes(x = PC1[5], y = PC2[5] - 0.1, xend = 0.9, yend = -2.5), inherit.aes = FALSE, colour = "#22eee8") + 
+  annotate("text", x=1, y=-2.8, label="Other", size=3, colour = "#22eee8") + 
+  theme(legend.position = c(0.83, 0.15), legend.text = element_text(size = 7)) +
+  theme(axis.title = element_text(size = 11))  + 
+ guides(fill = guide_legend(keywidth = 0.5, keyheight = 0.5)) + 
+  guides(colour = guide_legend(keywidth = 0.5, keyheight = 0.5)) + 
+  guides(shape = guide_legend(keywidth = 0.5, keyheight = 0.5)) + 
+  theme(axis.text.y = element_blank()) 
+
+
+grid.draw(cbind(ggplotGrob(pcplot1), ggplotGrob(pcplot2),ggplotGrob(pcplot3)))
+
+## Combine three plots to create a panel and output as PDF
+
+# pdf("27_07_2017_pca_migrant_wealth_migrant_reason.pdf", width = 7.4, height = 3)
+# grid.draw(cbind(ggplotGrob(pcplot1), ggplotGrob(pcplot2),ggplotGrob(pcplot3)))
+# dev.off()
+#
+
+
+```
+
+
+#### PCA of wealth with migrants plotted by site.
+
+This plot is the same as the one above but shows the migrant wealth broken down by the reason for migration. Again, I've used factor.fit in the package 'vegan' to explicitly test this. Here, there is a significant different between these centroids which explains 11% of the variation in wealth, this is significant p = 0.001. The wealth of those in Amporoforo is, on average, marginally higher than at the other sites in terms of the main wealth axis (PCA1) which is associated with all of our wealth metrics. Households in Ampahitra are, on average, marginally wealthier on the second axis which in associated with a higher number of tropical livestock units and more radios, and a lower house quality.
+
+
+```{r Economic situation of households per site, include=TRUE, echo= FALSE, fig.width = 11, fig.height = 7}
+
+### Use pov_pca_scores from first code chunk.  These include all households. 
+#summary(pov_pca_scores)
+
+##########  Reorder site names by protection status for plotting.. 
+pov_pca_scores$Site2 <- factor(pov_pca_scores$site,
+                              levels = c("Ampahitra","Sahavazina","Mantadia","Zahamena","Amporoforo"))
+
+### calculate convex hulls for  groups
+find_hull <- function(x) x[chull(x$PC1, x$PC2), ]
+
+hulls <- pov_pca_scores %>% group_by(Site2) %>% do(find_hull(.))
+
+
+#### these remain as previous model for left hand plot.. 
+poverty.pca.loads <- data.frame(PC1=loadings(poverty.pca)[,1],
+                                 PC2=loadings(poverty.pca)[,2], 
+                                 name=names(loadings(poverty.pca)[,1]))
+
+
+
+########### use factor.fit in the package vegan to look for differences
+########### in the centroids 
+
+mat3 <- as.matrix(dplyr::select(pov_pca_scores,PC1, PC2))
+
+
+
+### I haven't stratified this since site is the main variable being tested now.
+
+mod3 <- factorfit(mat3, pov_pca_scores$Site2, permutations = 999)
+
+# Centroids:
+#                 PC1     PC2
+# PAmpahitra  -0.1791  0.5483
+# PSahavazina -0.0624 -0.0306
+# PMantadia   -0.0016 -0.5398
+# PZahamena    0.0511 -0.2963
+# PAmporoforo  0.6980 -0.1259
+# 
+# Goodness of fit:
+#       r2 Pr(>r)    
+# P 0.1137  0.001 ***
+# ---
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+# Permutation: free
+# Number of permutations: 999
+
+centroids <- data.frame(mod3$centroids)
+centroids$site <- levels(pov_pca_scores$Site2)
+
+## PCA scatter plot for all sites with convex hulls around scatter plot for each site 
+
+pcplot4 <- ggplot(pov_pca_scores, aes(PC1, PC2, shape=Site2, colour = Site2, fill = Site2))+
+  geom_point() + theme_bw() +
+  geom_polygon(data = hulls, alpha = 0.1) +
+  scale_colour_brewer(palette = "Dark2", name=NULL, guide=guide_legend(reverse = F)) +
+  scale_fill_brewer(palette = "Dark2", name=NULL, guide=guide_legend(reverse = F)) +
+  
+  scale_shape_discrete(name=NULL, guide=guide_legend(reverse = F)) +
+ 
+  xlab("Wealth axis 1") +
+  ylab(NULL) +
+   annotate("text", x=-2.5, y=5.5, label="b)", size=7) +
+   ylim(-4.2,6) + 
+  xlim(-3,6) +  
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "grey") + 
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey") + 
+  theme(panel.grid = element_blank()) + 
+  geom_point(data = centroids, aes(x = PC1, y = PC2), inherit.aes = FALSE) +
+  geom_segment(data = centroids,aes(x = PC1[1] - 0.05 , y = PC2[1] + 0.05, xend = -0.9, yend = 2.8), inherit.aes = FALSE, colour = "#1B9E77") + 
+  annotate("text", x=-1.1, y=3.1, label="Ampahitra", size=3,colour = "#1B9E77") + 
+  geom_segment(data = centroids,aes(x = PC1[2] , y = PC2[2]-0.05 , xend = -1.3, yend = -2.1), inherit.aes = FALSE, colour = "#D95F02") + 
+  annotate("text", x=-1.4, y =-2.3,label="Sahavazina", size=3, colour = "#D95F02") +
+  geom_segment(data = centroids,aes(x = PC1[3] , y = PC2[3], xend = -0.7, yend = -3.3), inherit.aes = FALSE,colour = "#7570B3") + 
+  annotate("text", x=-0.7, y=-3.5, label="Mantadia", size=3,colour = "#7570B3") + 
+  geom_segment(data = centroids,aes(x = PC1[4], y = PC2[4] + 0.05, xend = 0.5, yend = -2.7), inherit.aes = FALSE, colour = "#E7298A") + 
+  annotate("text", x=0.6, y=-2.8, label="Zahamena", size=3, colour = "#E7298A")+  
+  geom_segment(data = centroids,aes(x = PC1[5] + 0.05, y = PC2[5], xend = 3.9, yend = -0.126), inherit.aes = FALSE, colour = "#66A61E") + 
+  annotate("text", x=4, y = 0.2, label="Amporoforo", size=3, colour = "#66A61E")  +
+  theme(legend.position = c(0.83, 0.15), legend.text = element_text(size = 7)) +
+  theme(axis.title = element_text(size = 11))  + 
+ guides(fill = guide_legend(keywidth = 0.5, keyheight = 0.5)) + 
+  guides(colour = guide_legend(keywidth = 0.5, keyheight = 0.5)) + 
+  guides(shape = guide_legend(keywidth = 0.5, keyheight = 0.5)) + 
+  theme(axis.text.y = element_blank()) 
+
+pcplot4
+## Combining two plots to create a panel for Supp mat.  
+
+# ## output as PDF
+
+# pdf("SuppA2_27_07_2017_pca_migrant_wealth_migrant_site.pdf", width = 7.4, height = 3)
+# grid.draw(cbind(ggplotGrob(pcplot1), ggplotGrob(pcplot4)))
+# dev.off()
+
+```
+
+
+### Where do migrants come from? (frequency distribution of the distance from commune centre of the commune (ie. region) in which they were born to the fokantany (ie. village) in which they now live).
+
+Here the number of migrants is 213, in the analysis I include 203 of these, 9 were ommited because there is no info on distance moved and 1 because there is no info about the reason for moving. 
+
+In these plots I've only included those households that moved less than 200.  This is between only 6 or 203 (i.e. ca. 2.5%) of migrants moved further than this and the inclusion of these make the plot unreadable (because the x axis stretches another 595km to include the longest distance travelled).
+
+Of the 6 omitted 5 were in Ampahitra,1 in Zahamena.  There was no obvious pattern in terms of the reason for moving, 1 moved for marriage, 1 for work, 1 for land and 3 for other reasons.  
+
+Estimated migration on the y-axis is the number of individuals migrating at each 1km space on the x-axis (imagine a histogram, with bar widths of 1km and frequencies on the y-axis)
+
+
+
+```{r Distance moved by fokatany, include = TRUE, echo = FALSE, fig.width = 11, fig.height = 7}
+
+
+### Take Migrants from full data set (i.e returning those households omitted from earlier analysis due to lack of wealth data)
+
+mig_only <- droplevels(filter(mig1, Mig_status == 0))
+#summary(mig_only)
+
+### remove rows where info on distance migrated/reason to move are missing. 
+
+mig_only <- mig_only[-which(is.na(mig_only$new_dist)),]
+
+### Create summary tables of distances moved
+
+####
+
+summary1 <- as.data.frame(summarise(group_by(mig_only, site),
+                  Mean = round(mean(new_dist),1),
+                  Median = round(median(new_dist),1),
+                  Quantile25 = round(quantile(new_dist, 0.25),1),
+                  Quantile75 = round(quantile(new_dist, 0.75),1),
+                  Min = round(min(new_dist),1),
+                  Max = round(max(new_dist),1)))
+
+summaryall <- as.data.frame(summarise(mig_only,
+                  Mean = round(mean(new_dist),1),
+                  Median = round(median(new_dist),1),
+                  Quantile25 = round(quantile(new_dist, 0.25),1),
+                  Quantile75 = round(quantile(new_dist, 0.75),1),
+                  Min = round(min(new_dist),1),
+                  Max = round(max(new_dist),1)))
+
+
+summaryall <- cbind("all",summaryall)
+
+
+summary2 <- as.data.frame(summarise(group_by(mig_only, Reason),
+                  Mean = round(mean(new_dist),1),
+                  Median = round(median(new_dist),1),
+                  Quantile25 = round(quantile(new_dist, 0.25),1),
+                  Quantile75 = round(quantile(new_dist, 0.75),1),
+                  Min = round(min(new_dist),1),
+                  Max = round(max(new_dist),1)))
+
+names(summary2) <- names(summary1)
+names(summaryall) <- names(summary1)
+
+summary1[,1] <- as.character(summary1[,1])
+summary_dists <- rbind(summary1, summary2, summaryall)
+
+###write.csv(summary_dists, "summary_distances_0207_2017.csv")
+
+####
+mig_only <- mig_only[-which(is.na(mig_only$Reason)),]
+
+#### recode Reason and Site to add labels and proper order for plotting.. 
+### label reason status and make this a factor such that Reason: 2=work,3=marriage,4=land availability,5=followed family members 6=others)  - #Slightly confusing because I also reorder them here so my
+#plotting colours are as I want them. 
+
+
+mig_only$ReasonF <- factor(mig_only$Reason,
+                              levels = c(4,3,5,2,6),labels = c( "Land", "Marriage", "Family", "Work", "Other"))
+
+mig_only$Site2 <- factor(mig_only$site,
+                              levels = c("Ampahitra","Sahavazina","Mantadia","Zahamena","Amporoforo"))
+
+####
+
+#### just use migrants that travelled less than 200km so that plot is readable
+
+mig_only_200 <- mig_only[mig_only$new_dist <200,]
+
+
+plota <- ggplot(mig_only_200, aes(x = new_dist, fill = Site2, colour = Site2)) +             geom_density(aes(y = ..count..), alpha = 0.5, bw = 4) + 
+       theme_bw() +
+       annotate("text", x=180, y=7.5, label="a)", size=8) +
+        scale_fill_brewer(palette = "Dark2", name=NULL, guide=guide_legend( reverse = F)) +
+   scale_colour_brewer(palette = "Dark2", name=NULL, guide=guide_legend( reverse = F)) +
+       xlab("Distance travelled (km)") +
+       ylab("Estimated migration") +
+       xlim(0,200) + 
+       ylim(0,8) + 
+       guides(colour=FALSE)+ 
+       theme(panel.grid = element_blank()) + 
+theme(legend.position = "right", legend.text = element_text(size = 9)) +
+  theme(axis.title = element_text(size = 11))  + 
+  theme(legend.position = c(0.75,0.6)) +
+  guides(fill = guide_legend(keywidth = 0.8, keyheight = 0.8))+ 
+  guides(colour = guide_legend(keywidth = 0.8, keyheight = 0.8))
+
+
+
+### 
+
+plotb <- ggplot(mig_only_200, aes(x = new_dist, fill = ReasonF, colour = ReasonF)) +     
+    annotate("text", x=180, y=7.5, label="b)", size=8) +
+       geom_density(aes(y = ..count..), alpha = 0.5, bw = 4) + 
+       theme_bw() + 
+  scale_fill_manual(values = c("#3ae22e", "#e31a1c", "#a6cee3", "#1f78b4", "#22eee8"),name=NULL, guide=guide_legend( reverse = F)) +  scale_colour_manual(values = c("#3ae22e", "#e31a1c","#a6cee3", "#1f78b4", "#22eee8"),name=NULL, guide=guide_legend( reverse = F)) +
+       xlab("Distance travelled (km)") +
+       ylab("Estimated migration") +
+       xlim(0,200) + 
+       ylim(0,8) + 
+       guides(colour=FALSE) + 
+       theme(panel.grid = element_blank()) + 
+theme(legend.position = "right", legend.text = element_text(size = 9), legend.title = element_text(size = 9))  +
+  theme(axis.title = element_text(size = 11)) + 
+   theme(legend.position = c(0.75,0.6)) +
+  guides(fill = guide_legend(keywidth = 0.8, keyheight = 0.8)) + 
+  guides(colour = guide_legend(keywidth = 0.8, keyheight = 0.8))
+
+grid.draw(cbind(ggplotGrob(plota), ggplotGrob(plotb)))
+
+## output as PDF
+# pdf("27_07_2017_fig2_migrant_distances.pdf", width = 5.5, height = 3.5)
+# grid.draw(cbind(ggplotGrob(plota), ggplotGrob(plotb)))
+# dev.off()
+
+
+```
+
+#### What are the predictors of distance moved amongst migrants? 
+
+Have wealthier migrants moved further?
+
+Here, we examine which types of Migrants have moved further. 
+ *Response variable: Distance travelled (commune centroid to new fokatany) (gamma distribution with log link)
+ *Predictors : Protected Area (old/New), Education (High/Low), household age, Wealth axes PC1 and PC2 
+ Interactions:Protected Area and household age
+ *Random : site 
+
+
+### model averaging based on models with < 2 delta AIC. 
+
+ Model-averaged coefficients:  
+ (full average) 
+                Estimate Std. Error Adjusted SE z value Pr(>|z|)    
+ (Intercept)     3.16171    0.28703     0.28891  10.943  < 2e-16 ***
+ educationHigh   0.95638    0.19617     0.19746   4.843 1.30e-06 ***
+ PC2             0.26029    0.05993     0.06027   4.319 1.57e-05 ***
+ PANew          -0.04785    0.29179     0.29362   0.163    0.871    
+ z.hh_age        0.05991    0.16370     0.16407   0.365    0.715    
+ PANew:z.hh_age -0.10629    0.21288     0.21319   0.499    0.618    
+ PC1            -0.01423    0.04426     0.04441   0.320    0.749    
+ 
+ Relative variable importance: 
+                      education PC2  z.hh_age PA   PA:z.hh_age PC1 
+ Importance:          1.00      1.00 0.40     0.36 0.24        0.18
+N containing models:    5         5    2        2    1           1
+
+Direction of significant effects:
+
+Education - Migrants with higher levels of education moved further
+Wealth axis 2 - Migrants with higher values on PC2 moved further (i.e. those with music players or tropical livestock units)
+
+No evidence for effect of
+- Wealth axis1 (maybe not surprising as this includes house quality (number of rooms and roof type) and irrigated rice fields in the metric)
+- Protected area status or household age (i.e. new migrants move similar distances to migrants in the past).
+
+
+```{r predicting distance moved, include = FALSE, echo = FALSE}
+
+### take Migrants from full data set 
+mig_only <- droplevels(filter(mig1, Mig_status == 0))
+#summary(mig_only)
+
+### remove rows where info on distance migrated/reason to move are missing. 
+
+mig_only <- mig_only[-which(is.na(mig_only$new_dist)),]
+
+##################
+
+###add data from wealth PCA axes
+
+# summary(pov_pca_scores)
+# names(pov_pca_scores)
+
+pca_scores <- dplyr::select(pov_pca_scores, resp_id, PC1, PC2)
+
+edu <- dplyr::select(hhwealth, resp_id, education)
+
+mig_only_sel <- dplyr::select(mig_only, resp_id, site, hh_age, PA, new_dist)
+
+mig_data1 <- merge(mig_only_sel, pca_scores, by = "resp_id", all.x = TRUE)
+
+mig_data2 <- merge(mig_data1, edu, by = "resp_id", all.x = TRUE)
+
+# summary(mig_data2)
+
+### remove Amporoforo 
+
+mig_data2 <- mig_data2[mig_data2$site != "Amporoforo",]
+
+## remove households for which wealth axes were not calculated.. 
+
+x1 <- which(is.na(mig_data2$PC2))
+
+mig_data2 <- droplevels(mig_data2[-x1,])
+
+#### remove households for with NA for education status.. 
+
+x1 <- which(is.na(mig_data2$education))
+
+mig_data2 <- droplevels(mig_data2[-x1,])
+
+### 1 household age = -100? remove this 
+
+x1 <- which(mig_data2$hh_age < 0 )
+
+mig_data2 <- droplevels(mig_data2[-x1,])
+
+#### set levels for education as a factor and add levels for interpretability and plotting
+
+mig_data2$education<- factor(mig_data2$education, levels = c(0,1),
+                                labels = c("Low","High"))
+
+# summary(mig_data2)
+######################################
+
+### standardise predictor variables
+
+dist_mig2 <- stdize(mig_data2, binomial = "omit", append = T)
+# names(dist_mig2)
+
+mod_dist1 <- glmmadmb(new_dist ~ education + z.hh_age + PA + PA*z.hh_age + PC1 + PC2 + (1|site), data = dist_mig2, family = "gaussian")
+
+
+hist(mod_dist1$residuals)
+
+shapiro.test(mod_dist1$residuals)
+
+# 	Shapiro-Wilk normality test
+# 
+# data:  mod_dist1$residuals
+# W = 0.55357, p-value < 2.2e-16
+
+AIC(mod_dist1)
+# [1] 2253.2
+
+### not 'normal' try 'gamma' to deal with overdispersion
+
+
+mod_dist_gam <- glmmadmb(new_dist ~ education + z.hh_age + PA*z.hh_age + PC1 + PC2 + (1|site), data = dist_mig2, family = "gamma")
+
+#hist(mod_dist_gam$residuals)
+
+#summary(mod_dist_gam)
+
+AIC(mod_dist_gam)
+## [1] 1729.48
+
+#### Model selection to find best predictors
+
+# modb <- dredge(mod_dist_gam)
+
+# modb1 <- as.data.frame(modb)
+
+### select models within 2 AIC of the top model and average these. 
+
+# mod_avg_dist <- model.avg(modb, subset = delta <2, fit = T)
+
+### view model averaged summary
+# summary(mod_avg_dist)
+
+## save model averged object: mod_avg_dist
+#saveRDS(mod_avg_dist, "model_average_2delta_distance_travelled_migrants")
+
+### model averaging as support for top model < 2 delta AIC. 
+
+# Model-averaged coefficients:  
+# (full average) 
+#                Estimate Std. Error Adjusted SE z value Pr(>|z|)    
+# (Intercept)     3.16171    0.28703     0.28891  10.943  < 2e-16 ***
+# educationHigh   0.95638    0.19617     0.19746   4.843 1.30e-06 ***
+# PC2             0.26029    0.05993     0.06027   4.319 1.57e-05 ***
+# PANew          -0.04785    0.29179     0.29362   0.163    0.871    
+# z.hh_age        0.05991    0.16370     0.16407   0.365    0.715    
+# PANew:z.hh_age -0.10629    0.21288     0.21319   0.499    0.618    
+# PC1            -0.01423    0.04426     0.04441   0.320    0.749    
+# 
+# Relative variable importance: 
+#                      education PC2  z.hh_age PA   PA:z.hh_age PC1 
+# Importance:          1.00      1.00 0.40     0.36 0.24        0.18
+# N containing models:    5         5    2        2    1           1
+
+```
+
+
+## Do migrants and non-migrants differ in terms of education, proximity to forest or household characteristics (i.e. size and age). 
+
+Households in Amporoforo are removed as they are are close to the forest frontier, and therefore do forest clearance is not relevant there. 
+
+ *Response variable: Migrant status (binomial distribution with logit link)
+ *Predictors : Protected Area (old/New), Education, household size, household age, distance to park, 
+ Interactions:Protected Area and household age
+ *Random : site 
+
+
+- 12 households are ommitted because household age is either -98 or -100.
+
+Results of based on model averaging of the best models (all models with 2 delta AIC of the best model)
+  
+  
+Model-averaged coefficients:  
+(full average) 
+                Estimate Std. Error Adjusted SE z value Pr(>|z|)    
+Intercept        2.485352   0.354142    0.354941   7.002  < 2e-16 
+educationYes   -1.002312   0.374390    0.375235   2.671  0.00756  
+PANew          -2.804659   0.444282    0.445289   6.299  < 2e-16 
+z.dist2park     0.661632   0.144954    0.145282   4.554  5.3e-06 
+z.hh_age       -0.062116   0.135352    0.135499   0.458  0.64665    
+PANew:z.hh_age  0.114677   0.219444    0.219605   0.522  0.60153    
+z.hh_size      -0.005596   0.050549    0.050658   0.110  0.91205    
+ 
+Relative variable importance: 
+                     education PA   z.dist2park z.hh_age PA:z.hh_age
+Importance:          1.00      1.00 1.00        0.29     0.29       
+N containing models:    3         3    3           1        1       
+
+                   z.hh_size
+
+Importance:          0.19     
+
+N containing models:    1  
+
+
+```{r Other differences between migrants and non-migrants, include = FALSE, echo = FALSE}
+
+
+edu <- dplyr::select(hhwealth, resp_id, education)
+
+mig_data1 <- merge(mig1, edu, by = "resp_id" )
+#summary(mig_data1)
+
+### remove amporoforo
+
+pov_mig_other <- droplevels(mig_data1[mig_data1$site != "Amporoforo",])
+### n = 554
+
+### remove NA's and negative values for household age
+pov_mig_other <- pov_mig_other[-which(is.na(pov_mig_other$hh_age)),]
+## n = 553
+pov_mig_other <- pov_mig_other[pov_mig_other$hh_age > 0,]
+# n = 542
+
+### remove NA's for education. 
+pov_mig_other <- pov_mig_other[-which(is.na(pov_mig_other$education)),]
+###' N = 540
+
+######
+
+#####  Models using migrant status as a response each characteristic (across sites)
+
+########## 
+#### give names to migrant status to make it less confusing.
+
+pov_mig_other$MigrantF <- factor(pov_mig_other$Mig_status, levels = c(0,1),
+                                labels = c("Migrant","Non-migrant"))
+
+#head(pov_mig_soc1)
+
+### Label education levels.. 
+
+pov_mig_other$education<- factor(pov_mig_other$education, levels = c(0,1),
+                                labels = c("Low","High"))
+
+
+### Education has two levels 1 = High, 0 = Low, therefore binomial variable
+
+####################
+
+pov_mig_std <- stdize(pov_mig_other, binomial = "omit", append = T)
+names(pov_mig_std)
+
+mod1 <- glmmadmb(Mig_status ~ education + z.hh_age + z.dist2park + z.hh_size + PA + PA*z.hh_age +  (1|site), data = pov_mig_std, family = "binomial")
+
+### Residual deviance = 500.01  on 540  degrees of freedom
+## No indication of overdispersion
+
+print(summary(mod1))
+
+### Note in this next section I've added the hashes to stop the code from running 
+## everytime.  This is because this section of code runs all of the model subsets via ## the function 'dredge' in the package MuMIn an therefore takes a very long time to ## run.
+### To run this section remove the hashes (#'s) at thestart of each line. 
+
+
+# d1 <- dredge(mod1)
+# 
+# dd1 <- as.data.frame(d1)
+# head(dd1)
+# 
+# 
+# mod_avg <- model.avg(d1, subset = delta <2, fit = T)
+# summary(mod_avg)
+
+#saveRDS(mod_avg, "model_average_2delta_diff_migrants")
+
+### model averaging as support for top model < 2 delta AIC. 
+
+# Model-averaged coefficients:  
+# (full average) 
+#                 Estimate Std. Error Adjusted SE z value Pr(>|z|)    
+# (Intercept)     2.485352   0.354142    0.354941   7.002  < 2e-16 ***
+# educationYes   -1.002312   0.374390    0.375235   2.671  0.00756 ** 
+# PANew          -2.804659   0.444282    0.445289   6.299  < 2e-16 ***
+# z.dist2park     0.661632   0.144954    0.145282   4.554  5.3e-06 ***
+# z.hh_age       -0.062116   0.135352    0.135499   0.458  0.64665    
+# PANew:z.hh_age  0.114677   0.219444    0.219605   0.522  0.60153    
+# z.hh_size      -0.005596   0.050549    0.050658   0.110  0.91205
+
+# Relative variable importance: 
+#                      education PA   z.dist2park z.hh_age PA:z.hh_age
+# Importance:          1.00      1.00 1.00        0.29     0.29       
+# N containing models:    3         3    3           1        1       
+#                      z.hh_size
+# Importance:          0.19     
+# N containing models:    1 
+
+
+#### 
+
+
+
+
+```
+
+#### Which factors best predict land clearance from forest
+ 
+
+Here, I have constructed a binomial model, 
+  
+   Response = "Clearance" or "No clearance" (binomial, logit link)
+   Predictors = PC1, PC2, Migrant status, education, hh_size, hh_age,   dist2park, Protected Area 
+   Interactions = ProtectedArea with Migrant status and ProtectedArea with household age
+   Random = site
+
+Excluded - Amporoforo
+         - All data with NA's in columns of any predictor variables
+
+
+Results of model averaging of all models within 2 delta AIC of the 'best model' (lowest AIC model)
+
+Model averaged results of models within 2 delta AIC of best model... 
+
+
+Model-averaged coefficients:  
+ (full average) 
+                   Estimate Std. Error Adjusted SE z value Pr(>|z|)    
+Intercept         -1.85483    0.26622     0.26669   6.955  < 2e-16 
+educationYes        -0.51023    0.46724     0.46784   1.091  0.27544    
+PANew                1.71710    0.27076     0.27131   6.329  < 2e-16 
+z.dist2park         -0.58581    0.11762     0.11788   4.970    7e-07 
+z.hh_age             0.45775    0.14536     0.14569   3.142  0.00168  
+z.PC2               -0.10412    0.12723     0.12737   0.817  0.41369    
+PANew:z.hh_age       0.56075    0.23742     0.23796   2.356  0.01845   
+z.PC1                0.01784    0.05994     0.06001   0.297  0.76629    
+z.hh_size            0.01454    0.05351     0.05358   0.271  0.78615    
+MigrantFNon-migrant  0.07477    0.18203     0.18226   0.410  0.68162    
+ 
+
+Only protected area, distance from park, household age and the interaction of 
+protected status and household age are in all the top models. 
+
+ Relative variable importance: 
+                    PA   z.dist2park z.hh_age PA:z.hh_age education z.PC2
+ Importance:          1.00 1.00        1.00     1.00        0.73      0.56 
+ N containing models:   12   12          12       12           8         6 
+                   MigrantF z.PC1 z.hh_size
+ Importance:          0.27     0.16  0.15     
+N containing models:    4        2     2 
+
+
+```{r  binomial models of deforestation full dataset, include = FALSE, echo = FALSE}
+
+### pov_mig_other contains predictor variables except wealth axes.
+
+
+###wealth axes are in pov_pca_scores
+
+
+predictors <- merge(pov_mig_other, pov_pca_scores[,c(1,18,19)], by = "resp_id",
+                    all= FALSE)
+
+## Load datasheet with information about deforestation. 
+
+clear1 <- read.csv("hh_land_clear.csv")
+#summary(clear1)
+#names(clear1)
+
+### match these datasheets by resp_id and hh_id columns
+### Here one household in pov_mig_soc1 can't be matched - AMB032
+
+
+clear_data <- merge(predictors, clear1, by.x = "resp_id", by.y = "hhid",
+                    all = FALSE)
+
+summary(clear_data)
+# n = 535
+
+
+### standardise predictors prior to model building. 
+
+
+clear_data2 <- droplevels(stdize(clear_data, binary = "omit", append = T))
+######################
+
+#names(clear_data2)
+
+clear_data2 <- droplevels(clear_data2)
+
+
+mod1 <- glmmadmb(Cleared_land ~ MigrantF + education + z.hh_age + z.hh_size + z.dist2park + z.PC1 + z.PC2 + PA + MigrantF*PA + z.hh_age*PA +  (1|site), data = clear_data2, family = "binomial")
+
+
+ 
+# summary(mod1)
+
+#Fixed effects:
+#                           Estimate Std. Error z value Pr(>|z|)    
+# (Intercept)               -2.00874    0.56950  -3.527  0.00042 ***
+# MigrantFNon-migrant        0.21231    0.58878   0.361  0.71840    
+# educationYes              -0.72523    0.41340  -1.754  0.07938 .  
+# z.hh_age                   0.42661    0.14782   2.886  0.00390 ** 
+# z.hh_size                  0.10032    0.10715   0.936  0.34917    
+# z.dist2park               -0.63065    0.12224  -5.159 2.48e-07 ***
+# z.PC1                      0.09787    0.11140   0.879  0.37966    
+# z.PC2                     -0.20498    0.11771  -1.741  0.08162 .  
+# PANew                      1.84571    0.59876   3.083  0.00205 ** 
+# MigrantFNon-migrant:PANew  0.03147    0.65314   0.048  0.96157    
+# z.hh_age:PANew             0.55700    0.23832   2.337  0.01943 *  
+# ---
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+
+#theta = 549/523
+### not over dispersed.  
+
+### Try all variables and use AIC to select best model. 
+
+
+###################
+
+# d2 <- dredge(mod1)
+# dd2 <- as.data.frame(d2)
+# 
+# head(dd2)
+# ### model averaged results of models within 2 delta AIC of best model... 
+# 
+# mod_avg2 <- model.avg(d2, subset = delta <2, fit = T)
+# 
+# 
+# summary(mod_avg2)
+
+# Model-averaged coefficients:  
+# (full average) 
+#                     Estimate Std. Error Adjusted SE z value Pr(>|z|)    
+# (Intercept)         -1.85483    0.26622     0.26669   6.955  < 2e-16 ***
+# educationYes        -0.51023    0.46724     0.46784   1.091  0.27544    
+# PANew                1.71710    0.27076     0.27131   6.329  < 2e-16 ***
+# z.dist2park         -0.58581    0.11762     0.11788   4.970    7e-07 ***
+# z.hh_age             0.45775    0.14536     0.14569   3.142  0.00168 ** 
+# z.PC2               -0.10412    0.12723     0.12737   0.817  0.41369    
+# PANew:z.hh_age       0.56075    0.23742     0.23796   2.356  0.01845 *  
+# z.PC1                0.01784    0.05994     0.06001   0.297  0.76629    
+# z.hh_size            0.01454    0.05351     0.05358   0.271  0.78615    
+# MigrantFNon-migrant  0.07477    0.18203     0.18226   0.410  0.68162    
+#  
+
+# Relative variable importance: 
+#                      PA   z.dist2park z.hh_age PA:z.hh_age education z.PC2
+# Importance:          1.00 1.00        1.00     1.00        0.73      0.56 
+# N containing models:   12   12          12       12           8         6 
+#                      MigrantF z.PC1 z.hh_size
+# Importance:          0.27     0.16  0.15     
+# N containing models:    4        2     2 
+
+
+
+ 
+
+```
+  
+#### Models of deforestation using the Agricultural dataset. 
+
+Model
+  * Response = Model 1 - "Area of land cleared" - negative binomial
+  * Predictors = PC1, PC2, Migrant status, education, hh_size, hh_age,   dist2park, Protected Area  (i.e. same as previous)
+   * Interactions = ProtectedArea with Migrant status and ProtectedArea with household age
+   * Random = site
+
+
+Excluded - All data with NA's in columns of any predictor variables
+
+     Note only 3 of the original 5 sites were included 
+         - Ampahitra (n = 50), Sahavazina (n = 39), Zahamena (n = 38)
+
+Model 1- (n = 127).
+
+Model-averaged coefficients:  
+(full average) 
+             Estimate Std. Error Adjusted SE z value Pr(>|z|)    
+Intercept   9.26658    0.38532     0.38887  23.830   <2e-16 
+z.dist2park  -0.62656    0.27267     0.27542   2.275   0.0229   
+z.PC1         0.79676    0.39739     0.40135   1.985   0.0471   
+z.hh_age      0.04834    0.17060     0.17179   0.281   0.7784    
+PANew         0.06992    0.32023     0.32275   0.217   0.8285    
+educationYes -0.08913    0.46867     0.47256   0.189   0.8504    
+ 
+
+Relative variable importance: 
+                     z.dist2park z.PC1 z.hh_age PA   education
+Importance:          1.00        1.00  0.21     0.18 0.17     
+N containing models:    4           4     1        1    1    
+
+
+```{r   models of deforestation agricultural subset, include = FALSE, echo = FALSE}
+
+### pov_mig_soc1 contains predictor variables
+#names(pov_mig_soc1)
+
+## Load datasheet with information about land use for agri subset. 
+
+land_use1 <- read.csv("hh_agri_land_survey.csv")
+#summary(land_use1)
+#names(land_use1)
+
+### match these datasheets by resp_id and hh_id columns
+### Here one household in pov_mig_soc1 can't be matched - AMB032
+
+
+land_data <- merge(predictors, land_use1, by.x = "resp_id", by.y = "HHID",
+                    all = FALSE)
+
+## 127 
+
+# summary(land_data)
+
+
+### standardise predictors prior to model building. 
+
+land_data2 <- stdize(land_data, binary = "omit", append = T)
+#summary(land_data2)
+#names(land_data2)
+
+### round data in "Cleared" to remove decimal places so that poisson, negative binomial and zero ## inflated models can be fitted.. 
+land_data2$Cleared <- round(land_data2$Cleared, 0)
+
+# 
+# mod_la <- glmmadmb(land_data2$Cleared ~  education + z.PC1 + z.PC2 +
+#                  z.hh_size + PA*z.hh_age + z.dist2park + PA + PA*MigrantF + (1|site),
+#                  data = land_data2, family = "gaussian", verbose = T)
+
+#### model won't fit, try poisson
+# 
+# mod_p1 <- glmmadmb(land_data2$Cleared ~  education + z.PC1 + z.PC2 +
+#                  z.hh_size + PA*z.hh_age + z.dist2park + PA + PA*MigrantF + (1|site), 
+#                  data = land_data2, family = "poisson", verbose = T)
+# 
+# ### model won't fit try neg binomial
+# 
+
+ 
+ mod_nb1 <- glmmadmb(land_data2$Cleared ~  education + z.PC1 + z.PC2 +
+                  z.hh_size + PA*z.hh_age + z.dist2park + PA + PA*MigrantF +  (1|site),                   data = land_data2, family = "nbinom")
+ 
+##### 
+ 
+
+ # 
+# AIC(mod_nb1)
+# ## 1821
+# mod_p1_z <- glmmadmb(land_data2$Cleared ~  education + z.PC1 + z.PC2 +
+#                  z.hh_size + PA*z.hh_age + z.dist2park + PA + PA*MigrantF + (1|site), 
+#                  data = land_data2, family = "poisson", verbose = T,
+#                  zeroInflation = TRUE)
+# ### model does not resolve 
+# 
+# mod_nb1_z <- glmmadmb(land_data2$Cleared ~  education + z.PC1 + z.PC2 +
+#                   PA*z.hh_age+ z.dist2park + z.hh_size + PA*MigrantF +   (1|site), 
+#                  data = land_data2, family = "poisson", verbose = T,
+#                  zeroInflation = TRUE)
+# 
+# ### model does not resolve 
+# 
+# ######### best option so far is nbinom.
+# 
+# dnb1 <- dredge(mod_nb1)
+# # 
+# ddnb1 <- as.data.frame(dnb1)
+# # 
+# # 
+# mod_avg_nb1 <- model.avg(dnb1, subset = delta <2, fit = T)
+# 
+# saveRDS(mod_avg_nb1, "model_average_2delta_agri_survey_20_07_2017")
+# # 
+
+
+```

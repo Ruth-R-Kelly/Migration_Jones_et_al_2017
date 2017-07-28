@@ -1,0 +1,406 @@
+---
+title: "Effects plots for *migration and deforestation*, RMR,RK,JPGJ"
+date: "27 July 2017"
+latest revision: 27 July 2017
+output:
+  html_document: default
+  word_document: default
+authors: Ruth Kelly
+---
+
+This RMarkdown document contains code for effects plots in: "Human migration to the forest frontier: implications for conservation management in Madagascar", Jones et al. 2017. 
+
+Required datafiles = 
+"data_for_amount_of_deforestation_model.csv"
+"data_for_binomial_deforestation_model.csv"
+"data_for_migrant_differences_model.csv"
+"model_average_2delta_agri_survey_20_07_2017"  
+"model_average_2delta_deforestation_binomial" 
+"model_average_2delta_diff_migrants"
+
+
+Note:  Minor editing of figures, e.g. fonts was conducted in a pdf editor after creating these plots. 
+
+```{r setup, include=FALSE, echo=TRUE}
+
+
+library("reshape2")
+library("dplyr")
+library("ggplot2")
+library("lme4")
+library("MuMIn")
+library("glmmADMB")
+library("grid")
+
+```
+
+#### Figure 4, differences between migrants and non-migrants (Non-economic)
+
+```{r Figure 4 GLMMs differences between migrants and non-migrants, include = TRUE, echo = FALSE}
+
+#### read in data with which model was created. 
+
+pov_mig_std <- read.csv("data_for_migrant_differences_model.csv" )
+
+#####  Read in model averaged object : "model_average_2delta_diff_migrants"       
+
+model1 <- readRDS("model_average_2delta_diff_migrants" )
+
+
+
+preds1 <- dplyr::select(pov_mig_std, education, z.hh_age, z.dist2park,
+                   z.hh_size, PA)
+
+# New predictors: X1 along the range of original data, other
+# variables held constant at their means
+
+preds1$z.hh_age <- mean(preds1$z.hh_age)
+preds1$z.hh_size <- mean(preds1$z.hh_size)
+
+
+
+x1 <- predict(model1, newdata = preds1,
+               se.fit = TRUE, type = "link",
+                backtransform = TRUE,
+                 full = TRUE)
+
+  x1$fit <- 1 - x1$fit
+  x1$upr <- x1$fit+x1$se.fit
+  x1$lwr <- x1$fit-x1$se.fit
+  x1$dist2park <- pov_mig_std$dist2park
+  x1$PA <- pov_mig_std$PA
+  x1$education <- pov_mig_std$education
+  x1$eduPA <- paste(x1$PA,x1$education, sep = "_" )
+x1<- as.data.frame(x1)
+
+x1$education <- relevel(x1$education, ref  = "Low")
+######################
+
+#pdf("Fig4_differences_migrant_nonmigrant.pdf", height = 5, width = 3.5)
+Fig4 <- ggplot(x1, aes(x = dist2park, y = fit, group = eduPA, linetype = education,  colour = PA, fill = PA)) +
+scale_colour_brewer(palette = "Dark2") +
+scale_fill_brewer(palette = "Dark2") +
+geom_ribbon(aes(ymin = lwr, ymax = upr, linetype = NA), alpha = 0.20) +
+geom_line(size = 1.5) +
+  ylim(0,1) + 
+xlab("Distance from forest (m)") +
+  ylab("Proportion of households which are migrants") +
+  theme_bw() +
+  theme(axis.title = element_text(size = 11)) +
+   theme(panel.grid = element_blank()) +
+   guides(colour = FALSE, fill = FALSE, linetype = FALSE) +
+guides(fill = guide_legend("Protected Area"),linetype = guide_legend("Education"))  +
+theme(legend.position = "right", legend.text = element_text(size = 4), legend.title = element_text(size = 4), legend.key.height = unit(0.4, "cm"), legend.key.width = unit(0.4, "cm"))
+
+#dev.off()
+##############################
+
+plot(Fig4)
+
+########################
+
+
+```
+
+#### Figure 5.  Predictors of forest clearance
+
+```{r  binomial models of deforestation full dataset, include = TRUE, echo = FALSE}
+
+### pov_mig_other contains predictor variables except wealth axes.
+
+### Read in data that was used to create the model.. 
+clear_data2 <- read.csv("data_for_binomial_deforestation_model.csv")
+
+### Read in model averaging object
+model2 <- readRDS("model_average_2delta_deforestation_binomial" )
+
+######## plotting effects...
+
+preds2 <- dplyr::select(clear_data2, PA, z.dist2park, z.hh_age, education, z.PC2, MigrantF, z.PC1, z.hh_size) 
+# 
+# # New predictors: dist2park along the range of original data, other
+# # variables held constant at their means
+# 
+
+### First plot distance to forest by education and Protected area. 
+preds2$z.hh_age <- mean(preds2$z.hh_age)
+preds2$z.hh_size <- mean(preds2$z.hh_size)
+preds2$z.PC1 <- mean(preds2$z.PC1)
+preds2$z.PC2 <- mean(preds2$z.PC2)
+
+
+ x1 <- predict(model2, newdata = preds2,
+                se.fit = TRUE, type = "link",
+                 backtransform = TRUE,
+                  full = TRUE)
+
+
+x1$fit <- x1$fit
+x1$upr <- x1$fit+x1$se.fit
+x1$lwr <- x1$fit-x1$se.fit
+x1$dist2park <- clear_data2$dist2park
+x1$PA <- clear_data2$PA
+x1$education<- clear_data2$education
+x1$MigrantF<- clear_data2$MigrantF
+
+x1$eduPAmig <- paste(x1$PA,x1$education, x1$MigrantF, sep = "_" )   
+x1$eduPA <- paste(x1$PA,x1$education, sep = "_" )
+x1$PAmig <- paste(x1$PA,x1$Migrant, sep = "_" )
+x1<- as.data.frame(x1)       
+
+###
+ x1$education <- relevel(x1$education, ref  = "Low")      
+# ######################
+# 
+
+x2 <- x1[x1$education == "Low",]
+#################
+
+plot_dist2 <- ggplot(x2, aes(x = dist2park, y = fit, group = eduPAmig, colour = eduPA, fill = eduPA, linetype = MigrantF)) + 
+   ylim(0,1.05) + 
+scale_colour_brewer(palette = "Dark2") +
+ scale_fill_brewer(palette = "Dark2", labels = c("Established", "New")) +
+ 
+ geom_ribbon(aes(ymin = lwr, ymax = upr, linetype = NA), alpha = 0.20) + 
+ geom_line(size = 1.5) +
+ xlab("Distance from forest (m)") + 
+   ylab("Probability of having cleared land") +
+   theme_bw() + 
+   theme(axis.title = element_text(size = 11)) + 
+    theme(panel.grid = element_blank()) + 
+    guides(colour = FALSE, fill = FALSE, linetype = FALSE) 
+
+
+#####
+
+####  Same but for household age.. 
+
+
+preds3 <- dplyr::select(clear_data2, PA, z.dist2park, z.hh_age, education, z.PC2, MigrantF, z.PC1, z.hh_size) 
+# 
+# # New predictors: household age along the range of original data, other
+# # variables held constant at their means
+# 
+
+# 
+### Second plot household age  by education and Protected area. 
+preds3$z.dist2park <- mean(preds2$z.dist2park)
+preds3$z.hh_size <- mean(preds2$z.hh_size)
+preds3$z.PC1 <- mean(preds2$z.PC1)
+preds3$z.PC2 <- mean(preds2$z.PC2)
+
+
+ x3 <- predict(model2, newdata = preds3,
+                se.fit = TRUE, type = "link",
+                 backtransform = TRUE,
+                  full = TRUE)
+
+
+x3$fit <- x3$fit
+x3$upr <- x3$fit+x3$se.fit
+x3$lwr <- x3$fit-x3$se.fit
+x3$Household_age <- clear_data2$hh_age
+x3$PA <- clear_data2$PA
+x3$education<- clear_data2$education
+x3$MigrantF<- clear_data2$MigrantF
+
+x3$eduPAmig <- paste(x3$PA, x3$education, x3$MigrantF, sep = "_" )   
+x3$eduPA <- paste(x3$PA,x3$education, sep = "_" )
+x3$PAmig <- paste(x3$PA,x3$Migrant, sep = "_" )
+x3<- as.data.frame(x3)       
+
+
+ x3$education <- relevel(x3$education, ref  = "Low")      
+# ######################
+# 
+
+x4 <- x3[x3$education == "Low",]
+#################
+
+    
+#########
+
+plot_age <- ggplot(x4, aes(x = Household_age, y = fit, group = eduPAmig, colour = eduPA, fill = eduPA, 
+linetype = MigrantF)) + 
+scale_colour_brewer(palette = "Dark2") +
+ scale_fill_brewer(palette = "Dark2", labels = c("Established", "New")) +
+ geom_ribbon(aes(ymin = lwr, ymax = upr, linetype = NA), alpha = 0.20) + 
+ geom_line(size = 1.5) +
+ xlab("Household age (yrs)") + 
+   ylab("") +
+  ylim(0,1.05) + 
+   theme_bw() + 
+   theme(axis.title = element_text(size = 11)) + 
+    theme(panel.grid = element_blank()) + 
+    guides(colour = FALSE, fill = FALSE, linetype = FALSE) + 
+    guides(fill = guide_legend("Protected Area"), linetype = guide_legend("Migration")) +  
+  theme(legend.position = "right", legend.text = element_text(size = 9), legend.title = element_text(size = 9)) 
+ 
+
+
+
+plot(plot_dist2)
+plot(plot_age)
+
+# ## output as PDF
+# pdf("Fig5_deforestation_models.pdf", width = 7.4, height = 4)
+# grid.draw(cbind(ggplotGrob(plot_dist2), ggplotGrob(plot_age), size="last"))
+# dev.off()
+
+```
+  
+#### Supplementary Figure A4. Predictors of amount of land cleared based on agricultural data subset. 
+
+```{r models of deforestation agricultural subset, include = TRUE, echo = FALSE}
+
+### read in data used in model construction
+land_data2 <- read.csv("data_for_amount_of_deforestation_model.csv")
+
+### read in Model averaging object
+
+model3 <- readRDS("model_average_2delta_agri_survey_20_07_2017")
+
+
+
+preds_ag <- dplyr::select(land_data2, education, z.hh_age, z.dist2park,
+                   z.PC1, PA)
+
+# New predictors:  variable of interest along original data, other
+# variables held constant at their means
+
+
+
+preds_ag$z.hh_age <- mean(preds_ag$z.hh_age)
+preds_ag$z.PC1 <- mean(preds_ag$z.PC1)
+
+x2_ag <- predict(model3, newdata = preds_ag,
+               se.fit = TRUE, type = "link",
+               full = TRUE)
+
+######## backtransform need to be conducted here as it was not conducted in the predict function above.
+
+bkfit <- exp(x2_ag$fit)
+bkupr <- exp(x2_ag$fit + x2_ag$se.fit)
+bklwr <- exp(x2_ag$fit - x2_ag$se.fit)
+
+####
+
+x_ag <- as.data.frame(x2_ag)
+ ####  
+ 
+  x_ag$fit <- bkfit/(10^6)
+  x_ag$upr <- bkupr/(10^6)
+  x_ag$lwr <- bklwr/(10^6)
+  x_ag$dist2park <- land_data2$dist2park
+  x_ag$PA <- preds_ag$PA
+  x_ag$education <- preds_ag$education
+  x_ag$Migrant <- land_data2$MigrantF
+
+  x_ag$eduPAmig <- paste(x_ag$PA,x_ag$education, x_ag$MigrantF, sep = "_" )   
+x_ag$eduPA <- paste(x_ag$PA,x_ag$education, sep = "_" )
+x_ag$PAmig <- paste(x_ag$PA,x_ag$Migrant, sep = "_" )
+
+x_ag$education <- relevel(x_ag$education, ref  = "Low")
+######################
+
+
+x_ag2 <- x_ag[x_ag$education == "Low",]
+
+x_ag2 <- droplevels(x_ag2)
+##
+
+x_ag2$PA <- relevel(x_ag2$PA, ref = "Established")
+
+
+
+
+plot_dist_ag <-  ggplot(x_ag2, aes(x = dist2park, y = fit, group = PAmig, colour = PA, fill = PA, 
+linetype = Migrant)) + 
+ylim(0, 0.1) + 
+scale_colour_brewer(palette = "Dark2") +
+ scale_fill_brewer(palette = "Dark2", labels = c("Established", "New")) +
+  geom_ribbon(aes(ymin = lwr, ymax = upr, linetype = NA), alpha = 0.2) + 
+ geom_line(size = 1.5) +
+ xlab("Distance from park (m)") + 
+   ylab("Amount of land cleared from forest per household (km2)") +
+   theme_bw() + 
+   theme(axis.title = element_text(size = 11)) + 
+    theme(panel.grid = element_blank()) + 
+    guides(colour = FALSE, fill = FALSE, linetype = FALSE) 
+
+
+#### and again for PC1 !
+
+preds_ag <- dplyr::select(land_data2, education, z.hh_age, z.dist2park,
+                   z.PC1, PA)
+
+# New predictors: x variable of interest along original data, other
+# variables held constant at their means
+
+preds_ag$z.hh_age <- mean(preds_ag$z.hh_age)
+preds_ag$z.dist2park <- mean(preds_ag$z.dist2park)
+
+x2_ag <- predict(model3, newdata = preds_ag,
+               se.fit = TRUE, type = "link",
+               full = TRUE)
+
+######## backtransform need to be conducted here as it was not conducted in the predict function above.
+
+bkfit <- exp(x2_ag$fit)
+bkupr <- exp(x2_ag$fit + x2_ag$se.fit)
+bklwr <- exp(x2_ag$fit - x2_ag$se.fit)
+
+####
+x_ag<- as.data.frame(x2_ag)
+
+ ####  
+  x_ag$fit <- bkfit/(10^6)
+  x_ag$upr <- bkupr/(10^6)
+  x_ag$lwr <- bklwr/(10^6)
+  x_ag$PC1 <- land_data2$PC1
+  x_ag$PA <- preds_ag$PA
+  x_ag$education <- preds_ag$education
+  x_ag$Migrant <- land_data2$MigrantF
+x_ag$eduPAmig <- paste(x_ag$PA,x_ag$education, x_ag$MigrantF, sep = "_" )   
+x_ag$eduPA <- paste(x_ag$PA,x_ag$education, sep = "_" )
+x_ag$PAmig <- paste(x_ag$PA,x_ag$Migrant, sep = "_" )
+
+x_ag$education <- relevel(x_ag$education, ref  = "Low")
+######################
+
+
+x_ag2 <- x_ag[x_ag$education == "Low",]
+x_ag2 <- droplevels(x_ag2)
+##
+
+################  Plot showing PC1
+
+
+plot_PC1_ag <-  ggplot(x_ag2, aes(x = PC1, y = fit, group = PAmig, colour = PA, fill = PA, 
+linetype = Migrant)) + 
+scale_colour_brewer(palette = "Dark2") +
+scale_fill_brewer(palette = "Dark2", labels = c("Established", "New")) +
+  geom_ribbon(aes(ymin = lwr, ymax = upr, linetype = NA), alpha = 0.2) + 
+ geom_line(size = 1.5)+
+ ylim(c(0,1.8)) + 
+ xlab("Wealth axis - Low to High - PC1") + 
+   ylab("") +
+   theme_bw() + 
+   theme(axis.title = element_text(size = 11)) + 
+    theme(panel.grid = element_blank()) + 
+    guides(colour = FALSE, fill = FALSE, linetype = FALSE) + 
+  guides(linetype = guide_legend("Migration"),fill = guide_legend("Protected Area")) +  
+  theme(legend.position = "right", legend.text = element_text(size = 9), legend.title = element_text(size = 9)) 
+  
+
+plot(plot_dist_ag)
+plot(plot_PC1_ag)
+
+# ## output as PDF
+# pdf("Supp_Fig4_Deforestation_agri_areas2.pdf", width = 7.4, height = 4.2)
+# grid.draw(cbind(ggplotGrob(plot_dist_ag), ggplotGrob(plot_PC1_ag), size="last"))
+# dev.off()
+
+###
+
+```
