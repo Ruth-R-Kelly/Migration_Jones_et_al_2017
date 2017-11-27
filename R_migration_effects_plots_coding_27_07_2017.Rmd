@@ -1,7 +1,7 @@
 ---
 title: "Effects plots for *migration and deforestation*, RMR,RK,JPGJ"
 date: "27 July 2017"
-latest revision: 27 July 2017
+latest revision: "27_11_2017"
 output:
   html_document: default
   word_document: default
@@ -76,13 +76,13 @@ x1<- as.data.frame(x1)
 x1$education <- relevel(x1$education, ref  = "Low")
 ######################
 
-#pdf("Fig4_differences_migrant_nonmigrant.pdf", height = 5, width = 3.5)
-Fig4 <- ggplot(x1, aes(x = dist2park, y = fit, group = eduPA, linetype = education,  colour = PA, fill = PA)) +
-scale_colour_brewer(palette = "Dark2") +
-scale_fill_brewer(palette = "Dark2") +
-geom_ribbon(aes(ymin = lwr, ymax = upr, linetype = NA), alpha = 0.20) +
+# pdf("Fig4_26_11_2017_differences_migrant_nonmigrant.pdf", height = 5, width = 3.5)
+ggplot(x1, aes(x = dist2park, y = fit, group = eduPA, linetype = education,  colour = PA, fill = PA)) +
+scale_colour_manual(values = c("#D55E00", "#0072B2")) +
+scale_fill_manual(values = c("#D55E00", "#0072B2")) +
+geom_ribbon(aes(ymin = lwr, ymax = upr, linetype = NA), alpha = 0.40) +
 geom_line(size = 1.5) +
-  ylim(0,1) + 
+  ylim(0,1) +
 xlab("Distance from forest (m)") +
   ylab("Proportion of households which are migrants") +
   theme_bw() +
@@ -92,7 +92,7 @@ xlab("Distance from forest (m)") +
 guides(fill = guide_legend("Protected Area"),linetype = guide_legend("Education"))  +
 theme(legend.position = "right", legend.text = element_text(size = 4), legend.title = element_text(size = 4), legend.key.height = unit(0.4, "cm"), legend.key.width = unit(0.4, "cm"))
 
-#dev.off()
+# dev.off()
 ##############################
 
 plot(Fig4)
@@ -158,10 +158,9 @@ x2 <- x1[x1$education == "Low",]
 
 plot_dist2 <- ggplot(x2, aes(x = dist2park, y = fit, group = eduPAmig, colour = eduPA, fill = eduPA, linetype = MigrantF)) + 
    ylim(0,1.05) + 
-scale_colour_brewer(palette = "Dark2") +
- scale_fill_brewer(palette = "Dark2", labels = c("Established", "New")) +
- 
- geom_ribbon(aes(ymin = lwr, ymax = upr, linetype = NA), alpha = 0.20) + 
+   scale_colour_manual(values = c("#D55E00", "#0072B2")) +
+scale_fill_manual(values = c("#D55E00", "#0072B2"), labels = c("Established", "New")) +
+ geom_ribbon(aes(ymin = lwr, ymax = upr, linetype = NA), alpha = 0.40) + 
  geom_line(size = 1.5) +
  xlab("Distance from forest (m)") + 
    ylab("Probability of having cleared land") +
@@ -222,9 +221,9 @@ x4 <- x3[x3$education == "Low",]
 
 plot_age <- ggplot(x4, aes(x = Household_age, y = fit, group = eduPAmig, colour = eduPA, fill = eduPA, 
 linetype = MigrantF)) + 
-scale_colour_brewer(palette = "Dark2") +
- scale_fill_brewer(palette = "Dark2", labels = c("Established", "New")) +
- geom_ribbon(aes(ymin = lwr, ymax = upr, linetype = NA), alpha = 0.20) + 
+   scale_colour_manual(values = c("#D55E00", "#0072B2")) +
+scale_fill_manual(values = c("#D55E00", "#0072B2"), labels = c("Established", "New")) +
+ geom_ribbon(aes(ymin = lwr, ymax = upr, linetype = NA), alpha = 0.40) + 
  geom_line(size = 1.5) +
  xlab("Household age (yrs)") + 
    ylab("") +
@@ -311,15 +310,16 @@ x_ag2 <- droplevels(x_ag2)
 
 x_ag2$PA <- relevel(x_ag2$PA, ref = "Established")
 
-
+x_ag2$PA <- relevel(x_ag2$PA ,
+                ref ="New")
 
 
 plot_dist_ag <-  ggplot(x_ag2, aes(x = dist2park, y = fit, group = PAmig, colour = PA, fill = PA, 
 linetype = Migrant)) + 
 ylim(0, 0.1) + 
-scale_colour_brewer(palette = "Dark2") +
- scale_fill_brewer(palette = "Dark2", labels = c("Established", "New")) +
-  geom_ribbon(aes(ymin = lwr, ymax = upr, linetype = NA), alpha = 0.2) + 
+   scale_colour_manual(values = c("#D55E00", "#0072B2")) +
+scale_fill_manual(values = c("#D55E00", "#0072B2"), labels = c("Established", "New")) +
+  geom_ribbon(aes(ymin = lwr, ymax = upr, linetype = NA), alpha = 0.4) + 
  geom_line(size = 1.5) +
  xlab("Distance from park (m)") + 
    ylab("Amount of land cleared from forest per household (km2)") +
@@ -373,14 +373,18 @@ x_ag2 <- x_ag[x_ag$education == "Low",]
 x_ag2 <- droplevels(x_ag2)
 ##
 
+x_ag2$PA <- relevel(x_ag2$PA ,
+                ref ="New")
+
+
 ################  Plot showing PC1
 
 
 plot_PC1_ag <-  ggplot(x_ag2, aes(x = PC1, y = fit, group = PAmig, colour = PA, fill = PA, 
 linetype = Migrant)) + 
-scale_colour_brewer(palette = "Dark2") +
-scale_fill_brewer(palette = "Dark2", labels = c("Established", "New")) +
-  geom_ribbon(aes(ymin = lwr, ymax = upr, linetype = NA), alpha = 0.2) + 
+   scale_colour_manual(values = c("#D55E00", "#0072B2")) +
+scale_fill_manual(values = c("#D55E00", "#0072B2"), labels = c("Established", "New")) +
+  geom_ribbon(aes(ymin = lwr, ymax = upr, linetype = NA), alpha = 0.4) + 
  geom_line(size = 1.5)+
  ylim(c(0,1.8)) + 
  xlab("Wealth axis - Low to High - PC1") + 
@@ -397,7 +401,7 @@ plot(plot_dist_ag)
 plot(plot_PC1_ag)
 
 # ## output as PDF
-# pdf("Supp_Fig4_Deforestation_agri_areas2.pdf", width = 7.4, height = 4.2)
+# pdf("Supp_Fig4_Deforestation_agri_areas3.pdf", width = 7.4, height = 4.2)
 # grid.draw(cbind(ggplotGrob(plot_dist_ag), ggplotGrob(plot_PC1_ag), size="last"))
 # dev.off()
 

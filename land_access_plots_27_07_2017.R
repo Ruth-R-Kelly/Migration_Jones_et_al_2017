@@ -106,13 +106,15 @@ stacked1
 
 #### Draw plot using ggplot2. 
 
+cbPalette <- c("#0072B2", "#E69F00", "#56B4E9", "#009E73", "#F0E442")
+
 ### 
 #pdf("SuppA3_land_access.pdf", width = 7.5, height = 7.5)
 ggplot(data=stacked1, aes(x=variable, y=Proportion, fill = variable )) +
   geom_bar(stat="identity", position=position_dodge()) + 
   facet_grid(Site ~ Migration) +
   theme_bw() + 
-  scale_fill_hue(guide = guide_legend(title = NULL)) + 
+  scale_fill_manual(values = cbPalette, guide = guide_legend(title = NULL)) + 
   theme(axis.title = element_text(size = 11)) + 
   theme(panel.grid = element_blank()) +
   theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
